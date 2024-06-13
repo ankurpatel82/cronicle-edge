@@ -359,7 +359,7 @@ if($SQL) { $Oracle = $MSSQL = $Mysql = $Pgsql = $true }
 
 $Mysql ? $sqlDrivers.Add("mysql2"): $sqlArgs.Add("--external:mysql2") | Out-Null
 $Pgsql ? $sqlDrivers.AddRange(@("pg", "pg-query-stream")) : $sqlArgs.AddRange(@("--external:pg", "--external:pg-query-stream")) | Out-Null
-$Oracle ? $sqlDrivers.Add("oracledb") : $sqlArgs.Add("--external:oracledb") | Out-Null
+$Oracle ? $sqlDrivers.Add("oracledb@6.5.0") : $sqlArgs.Add("--external:oracledb") | Out-Null
 $MSSQL ? $sqlDrivers.Add("tedious") : $sqlArgs.Add("--external:tedious") | Out-Null
 $Sqlite ? $sqlDrivers.Add("sqlite3") : $sqlArgs.Add("--external:sqlite3") | Out-Null
 
@@ -403,9 +403,10 @@ if(Test-Path "sample_conf\examples\storage.$Engine.json") {
   Copy-Item -Force "sample_conf\examples\storage.$Engine.json" $Path\conf\storage.json
 }
 
+# no need to fix formidable since using 3.x version
 # --- fix  formidable
-Write-Bold "Applyig some patches"
-esbuild --bundle --log-level=$ESBuildLogLevel $minify --keep-names --platform=node --outdir=$Path/bin/plugins node_modules/formidable/src/plugins/*.js
+#Write-Bold "Applyig some patches"
+# esbuild --bundle --log-level=$ESBuildLogLevel $minify --keep-names --platform=node --outdir=$Path/bin/plugins node_modules/formidable/src/plugins/*.js
 
 # --- CRONICLE.JS
 Write-Bold "Bundling cronicle.js"

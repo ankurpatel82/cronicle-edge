@@ -87,9 +87,10 @@
 				{ "id":"ssh_host", "type":"text", "size":40, "title":"SSH Host", "value": "ssh://cronicle:Password@localhost:22" },
 				{ "id":"kill_cmd", "type":"text", "size":40, "title":"Kill Command", "value": "pkill -s $$" },
 				{ "id":"script", "type":"textarea", "rows":10, "title":"Script", "value": "\n#!/bin/sh\n\necho \"Running SSHX job on $HOSTNAME\"\n\nsleep 10\n\n# Specify conneciton info using URI format:\n# [ssh://]user[:Password]@host[:port]?[privateKey=/path/to/file&passphrase=Password]\n# URI can be passed directly or as a reference to environment variable\n# If passing password via URI, you'd need to encode special characters (e.g. @ => %40)\n# You can also set SSH_KEY/SSH_PASSWORD/SSH_PASSPHRASE as variables in event/plugin secrets\n\n# If no SSH Host specified on event parameters, it can be resolved from WF argument\n\n# Kill Command parameter is used to properly handle job abortion\n# Default command is [pkill -S $$]\n# $$ is refering to PID of your script parent process (bootstrap script)\n\n# To pass variables other then JOB_ / ARG*, use SSH_ prefix on variable name\n# If this event is chained by other job, you can access chain data using CHAIN_DATA variable\n\n" },
-				{"type":"select","id":"lang","title":"syntax","items":["shell","powershell","javascript","python","perl","groovy","java","csharp","scala","sql","yaml","dockerfile","json","props"],"value":"shell"},
-				{"type":"select","id":"theme","title":"theme","items":["default","gruvbox-dark","solarized light","solarized dark","darcula","ambiance","base16-dark","nord"],"value":"default"},
-				{ "id":"json", "type":"checkbox", "title":"Interpret JSON in Output", "value": 0 }		
+				{ "id":"json", "type":"checkbox", "title":"Interpret JSON in Output", "value": 0 },
+				{ "type": "checkbox", "id": "annotate", "title": "Add Date/Time Stamps to Log",	"value": 0 },
+				{ "type":"select","id":"lang","title":"syntax","items":["shell","powershell","javascript","python","perl","groovy","java","csharp","scala","sql","yaml","dockerfile","json","props"],"value":"shell"},
+				{ "type":"select","id":"theme","title":"theme","items":["default","gruvbox-dark","solarized light","solarized dark","darcula","ambiance","base16-dark","nord"],"value":"default"}
 			]
 		} ],
 		
@@ -109,6 +110,7 @@
 				{ "id":"command", "type":"text", "size":40, "title":"Command", "value": "" },
 				{ "id":"script", "type":"textarea", "rows":10, "title":"Script", "value": "\n#!/bin/sh\n\necho \"Running Docker job on $HOSTNAME\"\n\ncat /etc/os-release\n\nls -lah chain_data || echo \"no chain data\"\n\n# If Docker Host is not specified, docker socket will be used\n# To access remote docker machine via ssh (on top of socket) specify DH as:\n# ssh://user[:password]@host[:port]\n# To specify ssh credentials you can also use SSH_PASSWORD/SSH_KEY env varaibles\n# To access remote docker instance with exposed http:\n# http://dockerhost:2375  (there is no auth options for that at this point)\n# To specify image registry credentials use DOCKER_USER, DOCKER_PASSWORD variables\n# All credential variables can be set via event/plugin secrets\n\n# This script will be used as an entrypoint on the container (mounted as /cronicle.sh by default).\n# To use original entrypoint check corresponding checkbox below,\n#  and use command parameter above to pass argument to it\n# If this job is chained by other event, chain data will be mounted to the container\n#   as chain_data file \n\n# In order to pass variables to container (other than JOB_ and ARG*) it should start with DOCKER_\n\n# If job is aborted \"docker stop\" is invoked (SIGTERM), docker will send SIGKILL after some time\n# Try to handle SIGTERM in your script for proper shutdown on abortion\n"},
 				{ "id":"entrypoint_path", "type":"text", "size":40, "title":"Mount As", "value": "" },
+				{ "id":"network", "type":"text", "size":20, "title":"Network", "value": "" },
 				{ "id":"keep_entrypoint", "type":"checkbox", "title":"Keep Original Entrypoint", "value": 0 },
 				{ "id":"pull_image", "type":"checkbox", "title":"Pull Image", "value": 1 },
 				{ "id":"keep_container", "type":"checkbox", "title":"Keep Container", "value": 0 },
@@ -133,7 +135,8 @@
 			"created": 1434125333,
 			"params": [
 				{ "id":"prefix", "type":"text", "size":20, "title":"Env Prefix", "value": "JOB_" }					
-			]
+			],
+			"optional": true
 		} ],
 
 		[ "listPush", "global/plugins", {
@@ -278,37 +281,43 @@
 			"id": "base_app_url", 
 			"title": "base_app_url",
 			"key": "http://localhost:3012",
-			"description": "overrides app url displayed in notifications"
+			"description": "overrides app url displayed in notifications",
+			"optional": true
 		}],
 		[ "listPush", "global/conf_keys", {
 			"id": "ad_domain", 
 			"title": "ad_domain",
 			"key": "corp.cronicle.com",
-			"description": "default AD domain for external auth. You can also prepend domain to the username (e.g. user@domain.com)"
+			"description": "default AD domain for external auth. You can also prepend domain to the username (e.g. user@domain.com)",
+			"optional": true
 		}],
 		[ "listPush", "global/conf_keys", {
 			"id": "smtp_hostname", 
 			"title": "smtp_hostname",
 			"key": "mailrelay.cronicle.com",
-			"description": "SMTP server (port 25 is used default)"
+			"description": "SMTP server (port 25 is used default)",
+			"optional": true
 		}],
 		[ "listPush", "global/conf_keys", {
 			"id": "email_from", 
 			"title": "email_from",
 			"key": "admin@cronicle.com",
-			"description": "Notification sender"
+			"description": "Notification sender",
+			"optional": true
 		}],
 		[ "listPush", "global/conf_keys", {
 			"id": "admin_web_hook", 
 			"title": "admin_web_hook",
 			"key": "",
-			"description": "Webhook for activity log notifications. Uses slack markdown.\nTip: use cronicle run api to handle notification with custom event"
+			"description": "Webhook for activity log notifications. Uses slack markdown.\nTip: use cronicle run api to handle notification with custom event",
+			"optional": true
 		}],
 		[ "listPush", "global/conf_keys", {
 			"id": "custom_live_log_socket_url", 
 			"title": "custom_live_log_socket_url",
 			"key": "http://localhost:3012",
-			"description": "!this requires browser page refresh\noverrides the host for live log connection. On multinode cluster this can be assigned to each node, e.g. \ncustom_live_log_socket_url.manager\ncustom_live_log_socket_url.worker1\nCan specify custom port too. This is useful if using reverse proxy or docker/swarm"
+			"description": "!this requires browser page refresh\noverrides the host for live log connection. On multinode cluster this can be assigned to each node, e.g. \ncustom_live_log_socket_url.manager\ncustom_live_log_socket_url.worker1\nCan specify custom port too. This is useful if using reverse proxy or docker/swarm",
+			"optional": true
 		}]
 		
 		,[ "listPush", "global/conf_keys", {
@@ -386,21 +395,24 @@
 			"id": "oninfo_web_hook", 
 			"title": "oninfo_web_hook",
 			"key": "",
-			"description": "Special webhook - will fire on info message, e.g. server startup/restart/error. Those messages appear on activity log"
+			"description": "Special webhook - will fire on info message, e.g. server startup/restart/error. Those messages appear on activity log",
+			"optional": true
 		}]
 
 		,[ "listPush", "global/conf_keys", {
 			"id": "universal_web_hook", 
 			"title": "universal_web_hook",
 			"key": "",
-			"description": "Special webhook - will fire on each job start/completion"
+			"description": "Special webhook - will fire on each job start/completion",
+			"optional": true
 		}]
 
 		,[ "listPush", "global/conf_keys", {
 			"id": "onupdate_web_hook", 
 			"title": "onupdate_web_hook",
 			"key": "",
-			"description": "Special webhook - will fire on metadata update (e.g. on event update)"
+			"description": "Special webhook - will fire on metadata update (e.g. on event update)",
+			"optional": true
 		}]
 
 		,[ "listPush", "global/conf_keys", {
@@ -408,7 +420,8 @@
 			"title": "ui.live_log_ws",
 			"type": "bool",
 			"key": false,
-			"description": "Turns on classic websocket api for live log"
+			"description": "Turns on classic websocket api for live log",
+			"optional": true
 		}]
 
 		,[ "listPush", "global/conf_keys", {
