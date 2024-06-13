@@ -10,6 +10,7 @@ var os = require('os');
 var fs = require('fs');
 var async = require('async');
 var bcrypt = require('bcrypt-node');
+var dns = require('dns')
 
 var Args = require('pixl-args');
 var Tools = require('pixl-tools');
@@ -155,6 +156,27 @@ for (var env_key in process.env) {
 	}
 }
 
+// helper function to resolve IPs for CRONICLE_cluster
+const getIPsForHostnames = async (hostnames) => {
+    const ipPromises = hostnames.map(hostname => {
+        return new Promise((resolve, reject) => {
+            dns.lookup(hostname.trim(), (err, ip) => {
+                if (err) resolve({ hostname: hostname.trim(), ip: null });
+				else resolve({ hostname: hostname.trim(), ip });
+            });
+        });
+    });
+
+    try {
+        // Wait for all DNS lookups to finish
+        const ips = await Promise.all(ipPromises);
+        return ips;
+    } catch (error) {
+        console.error("Error fetching IP addresses:", error);
+        return [];
+    }
+};
+
 // construct standalone storage server
 var storage = new StandaloneStorage(config.Storage, function (err) {
 	if (err) throw err;
@@ -186,12 +208,21 @@ var storage = new StandaloneStorage(config.Storage, function (err) {
 			// setup new manager server
 			var setup = require('../conf/setup.json');
 
+			let minimal = (process.env['CRONICLE_setup'] === 'minimal')
+
 			// make sure this is only run once
 			// changing exit code to 0, so it won't break docker entry point
-			storage.get('global/users', function (err) {
+			storage.get('global/users', async function (err) {
 				if (!err) {
 					print("Storage has already been set up.  There is no need to run this command again.\n\n");
 					process.exit(0);
+				}
+
+				if(process.env['CRONICLE_cluster']) {
+					let servers = await getIPsForHostnames(process.env['CRONICLE_cluster'].split(','))
+					servers.forEach(server =>{
+						setup.storage.push(["listPush", "global/servers", server])
+					})
 				}
 
 				async.eachSeries(setup.storage,
@@ -201,18 +232,29 @@ var storage = new StandaloneStorage(config.Storage, function (err) {
 						var func = params.shift();
 						params.push(callback);
 
+						let obj = {}
+
 						// massage a few params
 						if (typeof (params[1]) == 'object') {
-							var obj = params[1];
+							 obj = params[1];
 							if (obj.created) obj.created = Tools.timeNow(true);
 							if (obj.modified) obj.modified = Tools.timeNow(true);
 							if (obj.regexp && (obj.regexp == '_HOSTNAME_')) obj.regexp = '^(' + Tools.escapeRegExp(hostname) + ')$';
 							if (obj.hostname && (obj.hostname == '_HOSTNAME_')) obj.hostname = hostname;
 							if (obj.ip && (obj.ip == '_IP_')) obj.ip = ip;
+							//if (obj.optional) { verbose("skipping " + params[0]); return callback(); }
 						}
 
-						// call storage directly
-						storage[func].apply(storage, params);
+						
+						if(minimal && obj.optional) {
+							// skip optional objects 
+							callback()
+						}
+						else {
+							// call storage directly
+							storage[func].apply(storage, params);
+						}
+
 					},
 					function (err) {
 						if (err) throw err;
@@ -227,6 +269,34 @@ var storage = new StandaloneStorage(config.Storage, function (err) {
 						storage.shutdown(function () { process.exit(0); });
 					}
 				);
+			});
+			break;
+
+		case 'reset':
+
+			let newGroup = { regexp: '^(' + Tools.escapeRegExp(hostname) + ')$' }
+
+			storage.listFindUpdate('global/server_groups', { id: "maingrp" }, newGroup, function (err) {
+				if (err) throw err;
+				print(`Main group regex is set to [ ${newGroup.regexp} ]`);
+				print("\n");
+
+					storage.listFind("global/servers", { hostname: hostname }, function (err, item) {
+						// already exist?
+						if (item) {
+							print(`${hostname} already exist in server list\n`);
+							storage.shutdown(function () { process.exit(1); });
+						}
+						else {
+							storage.listPush("global/servers", { hostname: hostname, ip: ip }, function (err) {
+								if (err) throw err;
+								print(`Added ${hostname} to server list (remove old servers from UI as needed)\n`);								
+								storage.shutdown(function () { process.exit(0); });
+							})
+						}
+
+					})
+
 			});
 			break;
 
